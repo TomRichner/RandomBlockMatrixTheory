@@ -105,7 +105,7 @@ validated against numerical spectra in his Fig. 2(b) rather than proven.
 ## Tests
 
 ```matlab
-test_RMTBlocks_equivalence     % 38 assertions
+test_RMTBlocks_equivalence     % 42 assertions
 test_RMTBlocks_predictions     %  8 assertions
 ```
 
@@ -116,6 +116,12 @@ configurations (all four `zrs_mode`s, `alpha ∈ {1, 0.5}`, nonzero `shift`, and
 the Harris Eq. (17)/(18) reduction, alias round-trips and their error identifiers, empty
 populations, and genuine block behavior. Sections needing `RMT` or `RMTMatrix` skip with
 a printed note if those classes are not on the path, so this repo is standalone-clonable.
+
+Section 7 covers **RNG stream alignment**, which the injection-based sections cannot: it
+asserts that the constructor and `copy()` consume randomness in exactly the same order as
+`RMT`, then replays `Fig_1_RMT_examples.m`'s full call sequence on both classes from one
+seed and checks all six `W` matrices are bit-for-bit equal *with no injection*. That is
+what makes "the ported figure is the same figure" a guarantee rather than an assumption.
 
 **`test_RMTBlocks_predictions`** validates the conjecture empirically across five
 configurations × two `alpha` × two `N`. Measured results:
@@ -134,6 +140,42 @@ The bulk edge is estimated from a **percentile** of `|lambda|`, not the max: Har
 (§III D 2) documents a small number of "local eigenvalue outliers" escaping the circular
 support — which is exactly why his Eq. (18) is introduced as the *approximate* radius —
 so `max(|lambda|)` would reject a correct formula.
+
+## Examples
+
+```matlab
+Fig_1_RMT_examples      % Harris reproductions (visual regression guard)
+Fig_2_block_examples    % what block structure adds
+```
+
+**`Fig_1_RMT_examples.m`** is a faithful port of
+`ConnectivityAdaptation/RandomMatrixTheory/Fig_1_RMT_examples.m` — the only substantive
+change is `RMT(N)` → `RMTBlocks(N)` on the first panel, with every later panel inheriting
+the class through `copy()`. It must therefore produce figures identical to the originals
+in `ConnectivityAdaptation/RandomMatrixTheory/RMT_figs/`, which makes it the visual
+regression guard. Numeric identity is proven headlessly in Section 7 of the equivalence
+test rather than left to the eye.
+
+**`Fig_2_block_examples.m`** shows six spectra the column-only parameterization cannot
+produce, at `N = 600`, `alpha = 1/3`:
+
+| panel | `R` | `lambda_O` | point |
+|---|---|---|---|
+| (a) column-uniform | 1.764 | −4.08, 0 | reduces to Harris |
+| (b) `mu_EE` elevated | 1.925 | **11.07, −9.03** | rank-2 mean → a *second* outlier |
+| (c) `sigma_II` reduced | 1.737 | −4.08, 0 | block variance moves the edge |
+| (d) non-separable `sigma` | 0.655 | 0, 0 | outside the `LJR` ensemble |
+| (e) `D = 3` | 1.083 | 4.46, −1.20, 0 | general `D`, three outliers |
+| (f) hyper-variable minority | 0.731 | 0, 0 | naive averaged radius fails |
+
+Panel (f) is the payoff. With `f = [0.9 0.1]` it draws both circles — the block Perron
+root (solid) and the naive population-averaged radius (dashed):
+
+```
+measured bulk edge       0.7303
+block Perron root        0.7312   <- 0.12% error
+naive averaged variance  0.3686   <- wrong by 2.0x
+```
 
 ## ZRS modes
 

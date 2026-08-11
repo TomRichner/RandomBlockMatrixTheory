@@ -1,0 +1,21 @@
+# Figure output
+figs/
+*.fig
+*.png
+*.svg
+*.jpg
+*.jp2
+*.pdf
+*.eps
+
+# MATLAB
+*.asv
+*.mat
+*.mex*
+slprj/
+codegen/
+
+# Editors / OS
+.vscode/
+.DS_Store
+Thumbs.db

@@ -364,6 +364,65 @@ lam6 = r6.lambda_O;
     sprintf('lambda_O = [%.4g, %.4g]', lam6(1), lam6(2)), n_pass, n_fail);
 
 %% ---------------------------------------------------------------
+%  Section 7: RNG stream alignment with RMT
+%  ---------------------------------------------------------------
+% Sections 1 and 2 inject A and S from the reference object, which proves the
+% CONSTRUCTION is equivalent but says nothing about how much randomness each class
+% consumes. examples/Fig_1_RMT_examples.m seeds once with rng(100) and then chains
+% six copy() calls, so reproducing those figures additionally requires RMTBlocks to
+% draw from the stream in exactly the same order as RMT:
+%
+%   constructor : randn(N)  then  rand(N) via update_sparsity
+%   copy()      : the constructor's two draws, then another rand(N) because
+%                 set.alpha re-runs update_sparsity when A is already populated
+%
+% That was designed for deliberately; this section is what makes it a guarantee
+% rather than an assumption.
+
+fprintf('\n--- 7. RNG stream alignment with RMT ---\n');
+if ~has_RMT
+    fprintf('  SKIP: class RMT not found on the path.\n');
+    n_skip = n_skip + 1;
+else
+    N7 = 120;
+
+    rng(100); a1 = RMT(N7);
+    rng(100); b1 = RMTBlocks(N7);
+    [n_pass, n_fail] = report(isequal(a1.A, b1.A) && isequal(a1.S, b1.S), ...
+        'constructor consumes the RNG identically', '', n_pass, n_fail);
+
+    a2 = a1.copy();  b2 = b1.copy();
+    [n_pass, n_fail] = report(isequal(a2.A, b2.A) && isequal(a2.S, b2.S), ...
+        'copy() consumes the RNG identically', '', n_pass, n_fail);
+
+    % Fig_1 chains six copies, so confirm the streams have not drifted apart by the
+    % time a later panel draws fresh disorder.
+    a3 = a2.copy();  b3 = b2.copy();
+    rng(7); a3.update_sparsity();
+    rng(7); b3.update_sparsity();
+    [n_pass, n_fail] = report(isequal(a3.S, b3.S), ...
+        'streams still aligned after a second copy()', '', n_pass, n_fail);
+
+    % The executable form of "the ported figure is the same figure": run Fig_1's
+    % exact call sequence on both classes from one seed, with NO injection of A/S.
+    N_fig = 600;
+    rng(100); W_ref = fig1_sequence(@RMT, N_fig);
+    rng(100); W_new = fig1_sequence(@RMTBlocks, N_fig);
+
+    all_ok = true;
+    worst = 0;
+    for k = 1:numel(W_ref)
+        if ~isequal(W_ref{k}, W_new{k})
+            all_ok = false;
+            worst = max(worst, max(abs(W_ref{k}(:) - W_new{k}(:))));
+        end
+    end
+    [n_pass, n_fail] = report(all_ok, ...
+        'Fig_1 call sequence: all 6 panels bit-for-bit from one seed, no injection', ...
+        sprintf('worst diff %.3e', worst), n_pass, n_fail);
+end
+
+%% ---------------------------------------------------------------
 %  Summary
 %  ---------------------------------------------------------------
 fprintf('\n=================================================\n');
@@ -392,6 +451,58 @@ obj.f = c.f;
 obj.zrs_mode = c.zrs;
 if supports_shift
     obj.shift = c.shift;
+end
+end
+
+function Ws = fig1_sequence(ctor, N)
+% Replay the exact construction sequence of Fig_1_RMT_examples.m, in the same
+% property-assignment ORDER, since alpha's setter redraws the sparsity mask and any
+% reordering would desynchronize the RNG stream. Returns the six panels' W matrices.
+Ws = cell(1, 6);
+G = cell(1, 6);
+E_W = 0.05 / sqrt(N);
+
+% (a) Dense random matrix, unbalanced with global outlier
+G{1} = ctor(N);
+G{1}.mu_tilde_e = 0 + E_W;
+G{1}.mu_tilde_i = 0 + E_W;
+G{1}.sigma_tilde_e = 1/sqrt(N);
+G{1}.sigma_tilde_i = 1/sqrt(N);
+G{1}.f = 1;
+G{1}.alpha = 1.0;
+G{1}.set_zrs_mode('none');
+
+% (b) Dense balanced shifted
+G{2} = G{1}.copy();
+G{2}.mu_tilde_e = 0;
+G{2}.mu_tilde_i = 0;
+R_b = G{2}.R;
+G{2}.shift = -R_b;
+
+% (c) Dense balanced Dale's law
+G{3} = G{2}.copy();
+G{3}.mu_tilde_e = 1/sqrt(N);
+G{3}.mu_tilde_i = -1/sqrt(N);
+G{3}.sigma_tilde_e = 1/sqrt(N);
+G{3}.sigma_tilde_i = 1/sqrt(N);
+G{3}.f = 0.5;
+
+% (d) Dense balanced Dale ZRS
+G{4} = G{3}.copy();
+G{4}.set_zrs_mode('ZRS');
+
+% (e) Dense unbalanced Dale, different sigmas, ZRS
+G{5} = G{4}.copy();
+G{5}.sigma_tilde_e = 0.35/sqrt(N);
+G{5}.sigma_tilde_i = G{5}.compute_sigma_tilde_i_for_target_variance(1/N);
+
+% (f) Sparse unbalanced with Partial SZRS
+G{6} = G{5}.copy();
+G{6}.set_alpha(0.5);
+G{6}.set_zrs_mode('Partial_SZRS');
+
+for k = 1:6
+    Ws{k} = G{k}.W;
 end
 end
 

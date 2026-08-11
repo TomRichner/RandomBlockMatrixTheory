@@ -677,9 +677,12 @@ classdef RMTBlocks < handle
             end
 
             fprintf('\n--- Blocks (row = postsynaptic, col = presynaptic) ---\n');
+            % The measured columns are computed over NONZERO entries only, so at
+            % alpha < 1 they track mu_tilde rather than mu_s = alpha*mu_tilde. The
+            % (NZ) tag matters: without it the two columns look contradictory.
             fprintf('%-14s %10s %10s %12s %12s %12s %12s\n', ...
                 'block(a<-b)', 'mu_tilde', 'sig_tilde', 'mu_s', 'sqrt(sig_s2)', ...
-                'meas. mu', 'meas. sigma');
+                'meas.mu(NZ)', 'meas.sd(NZ)');
             fprintf('%s\n', repmat('-', 1, 88));
             for a = 1:D
                 for b = 1:D
